@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>투표 페이지</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .vote-container { max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; }
+        .vote-container h2 { text-align: center; }
+        .vote-options label { display: block; margin: 5px 0; }
+        .vote-result { margin-top: 20px; }
+        .result-bar { height: 20px; background-color: #4CAF50; text-align: center; color: white; line-height: 20px; }
+        .error-message { color: red; text-align: center; }
+    </style>
+</head>
+<body>
+<div class="vote-container">
+    <h2 id="vote-title">투표 로딩 중...</h2>
+    <form id="vote-form" style="display: none;">
+        <div id="vote-options-container"></div>
+        <button type="button" onclick="submitVote()">투표하기</button>
+    </form>
+    <div id="vote-result" style="display: none;">
+        <h3>투표 결과</h3>
+        <div id="result-container"></div>
+    </div>
+    <div class="error-message" id="error-message" style="display: none;">에러 발생: 투표 데이터를 불러올 수 없습니다.</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.0.0/dist/supabase.min.js"></script>
+<script>
+    const supabaseUrl = 'https://dszpuhxokgufaoyvzhzn.supabase.co';
+    const supabaseKey = 'YOUR_API_KEY_HERE'; // 반드시 API 키를 보안된 서버로 이동해야 합니다.
+    const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+    let voteData = {};
+    const voteId = window.location.pathname.split('/').pop(); // URL에서 투표 ID 추출
+
+    window.onload = async function () {
+        if (!voteId) {
+            document.getElementById("error-message").innerText = "유효한 투표 번호가 없습니다.";
+            document.getElementById("error-message").style.display = "block";
+            return;
+        }
+
+        await loadVoteData(voteId);
+    };
+
+    async function loadVoteData(id) {
+        const { data, error } = await supabase
+            .from('votes')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error || !data) {
+            console.error(error);
+            document.getElementById("error-message").innerText = "투표 데이터를 불러올 수 없습니다.";
+            document.getElementById("error-message").style.display = "block";
+            return;
+        }
+
+        voteData = data;
+
+        document.getElementById("vote-title").innerText = voteData.title;
+
+        const optionsContainer = document.getElementById("vote-options-container");
+        optionsContainer.innerHTML = "";
+        voteData.options.forEach((option, index) => {
+            const label = document.createElement("label");
+            label.innerHTML = `<input type="radio" name="vote-option" value="${index}" /> ${option}`;
+            optionsContainer.appendChild(label);
+        });
+
+        document.getElementById("vote-form").style.display = "block";
+    }
+
+    async function submitVote() {
+        const selectedOption = document.querySelector('input[name="vote-option"]:checked');
+        if (!selectedOption) {
+            alert("선택지를 선택해주세요.");
+            return;
+        }
+
+        const selectedIndex = parseInt(selectedOption.value);
+        voteData.votes[selectedIndex] += 1;
+
+        // Supabase 업데이트
+        const { error } = await supabase
+            .from('votes')
+            .update({ votes: voteData.votes })
+            .eq('id', voteId);
+
+        if (error) {
+            console.error(error);
+            alert("투표 저장에 실패했습니다.");
+            return;
+        }
+
+        showResults();
+    }
+
+    function showResults() {
+        document.getElementById("vote-form").style.display = "none";
+        document.getElementById("vote-result").style.display = "block";
+
+        const resultContainer = document.getElementById("result-container");
+        resultContainer.innerHTML = ""; // 초기화
+
+        const totalVotes = voteData.votes.reduce((sum, vote) => sum + vote, 0);
+        voteData.options.forEach((option, index) => {
+            const voteCount = voteData.votes[index];
+            const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
+            const resultBar = document.createElement("div");
+            resultBar.classList.add("result-bar");
+            resultBar.style.width = `${percentage}%`;
+            resultBar.innerText = `${option} (${voteCount}표, ${percentage}%)`;
+            resultContainer.appendChild(resultBar);
+        });
+    }
+</script>
+</body>
+</html>
